@@ -9,6 +9,9 @@
 #include "../include/apidisk.h"
 /* talvez precise mais includes */
 
+/* Variaveis Globais */
+BYTE Buffer[SECTOR_SIZE];
+
 
 
 
@@ -41,4 +44,73 @@ int identify2(char *name, int size){
 		name[i + 2*(letters + 1) + 1] = '\0';
 	}
 	return -1;
+}
+
+FILE2 create2 (char *filename){
+	/* Alocar memoria para armazenar o registro do novo arquivo */
+	struct t2fs_record *registro;
+	registro = calloc(1, sizeof(t2fs_record));
+
+	/* Inicializar registro */
+	registro->TypeVal = TYPEVAL_REGULAR;
+	registro->name = filename;
+	registro->inodeNumber = ;
+
+
+}
+
+int delete2 (char *filename){
+
+}
+
+FILE2 open2 (char *filename){
+
+}
+
+int close2 (FILE2 handle){
+
+}
+
+int read2 (FILE2 handle, char *buffer, int size){
+
+}
+
+int write2 (FILE2 handle, char *buffer, int size){
+
+}
+
+int truncate2 (FILE2 handle){
+
+}
+
+int seek2 (FILE2 handle, DWORD offset){
+
+}
+
+int mkdir2 (char *pathname){
+
+}
+
+int rmdir2 (char *pathname){
+
+}
+
+int chdir2 (char *pathname){
+
+}
+
+int getcwd2 (char *pathname, int size){
+
+}
+
+DIR2 opendir2 (char *pathname){
+
+}
+
+int readdir2 (DIR2 handle, DIRENT2 *dentry){
+
+}
+
+int closedir2 (DIR2 handle){
+
 }
