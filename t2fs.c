@@ -1,22 +1,21 @@
+/* Arthur Böckmann Grossi (275607), Cassiano Translatti Furlani(278038) e Ian Fischer Schilling(275603)*/
+
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
 #include "../include/t2fs.h"
 #include "../include/bitmap2.h"
 #include "../include/apidisk.h"
+/* talvez precise mais includes */
 
-
-#define MAX_NAME_SIZE 256
 /* STRUCTURES*/
-typedef struct files
-{	
+typedef struct files{	
 	char fullPathName[MAX_NAME_SIZE];
 	BYTE type;
 	int currentPointer;
 	int handle;
 	int size;
-
 }fileHandler;
 
 typedef struct cD{
@@ -24,8 +23,8 @@ typedef struct cD{
 	int block;
 }dirDescription;
 
-/* GLOBAL VARIABLES*/
 
+/* GLOBAL VARIABLES*/
 struct t2fs_superbloco *superBlock;
 int systemReady = 0;
 BYTE buffer[SECTOR_SIZE];
@@ -39,13 +38,120 @@ fileHandler *openedFiles[10];
 
 /* CREATED FUNCTIONS */
 int setup();
+int returnfirstfreedatablock();
 
 
-/* 
-Funtion: initialises the file system by reading the superblock
-Return 	0 if successful
-		-1 if error	
-*/
+
+
+int identify2(char *name, int size){
+	char student[MAX_STU_CHAR] = "";
+	int i;
+	int st2 = strlen(STU1);
+	int st3 = st2 + strlen(STU2);
+	int letters;
+	strcat(student, STU1);
+	strcat(student, STU2);
+	strcat(student, STU3);
+	if(size >= MAX_STU_CHAR) //Size is equal to or greater than students names
+	{
+		for( i = 0; i < MAX_STU_CHAR;i++)
+		name[i] = student[i];
+		return 0;
+	}
+	else if( size >= 9) //At least 1 characters for each
+	{
+		letters = (int)size/3 - 2;
+		for(i = 0; i < letters; i++)
+		{
+			name[i] = student[i];
+			name[i + letters + 1] = student[i + st2];
+			name[i + 2*(letters + 1)] = student[i + st3];
+		}
+		name[letters] = '\n';
+		name[2*(letters) +1]= '\n';
+		name[i + 2*(letters + 1) + 1] = '\0';
+	}
+	return -1;
+}
+
+FILE2 create2 (char *filename){
+	if(!systemReady){
+		setup;
+	}else{
+		/* Criar registro para o novo arquivo dentro do diretorio pai(corrente) */
+		struct t2fs_record arq;
+		arq.TypeVal = TYPEVAL_REGULAR;
+		arq.name = *fileName;
+		arq.inodeNumber =
+
+		struct t2fs_inode arqnode;
+		arqnode.blocksFileSize = 1; /* Inicializa com 1 bloco de dados sempre */
+		arqnode.bytesFileSize = 0;
+		arqnode.dataPtr[0] = ;
+		arqnode.dataPtr[1] = INVALID_PTR;
+		arqnode.singleIndPtr = INVALID_PTR;
+		arqnode.doubleIndPtr = INVALID_PTR;
+		arqnode.reservado[2] = {0,0};
+
+	}
+
+}
+
+int delete2 (char *filename){
+
+}
+
+FILE2 open2 (char *filename){
+
+}
+
+int close2 (FILE2 handle){
+
+}
+
+int read2 (FILE2 handle, char *buffer, int size){
+
+}
+
+int write2 (FILE2 handle, char *buffer, int size){
+
+}
+
+int truncate2 (FILE2 handle){
+
+}
+
+int seek2 (FILE2 handle, DWORD offset){
+
+}
+
+int mkdir2 (char *pathname){
+
+}
+
+int rmdir2 (char *pathname){
+
+}
+
+int chdir2 (char *pathname){
+
+}
+
+int getcwd2 (char *pathname, int size){
+
+}
+
+DIR2 opendir2 (char *pathname){
+
+}
+
+int readdir2 (DIR2 handle, DIRENT2 *dentry){
+
+}
+
+int closedir2 (DIR2 handle){
+
+}
 
 int setup(){
 	//Create root directory and prepare the file
@@ -86,7 +192,7 @@ int setup(){
 
 	bytesInBlock = superBlock->blockSize * SECTOR_SIZE;
 	firstDataBlock = (1 + superBlock->freeInodeBitmapSize + superBlock->freeBlocksBitmapSize + superBlock->inodeAreaSize);
-	inodeSector = (1 + superBlock->freeBlocksBitmapSize + superBlock->freeInodeBitmapSize)*superBlock->blockSize;
+	inodeSector = (1 + superBlock->freeBlocksBitmapSize + superBlock->freeInodeBitmapSize)*blockSize;
 
 	///Initialise the root directory
 	currentDir = calloc(1, sizeof(dirDescription));
@@ -104,9 +210,9 @@ int setup(){
 	rootRecord1->inodeNumber = 0;
 
 	//Inode initialization
-	struct t2fs_inode rootInode0;
+	struct t2fs_inode rootInode;
 	rootInode->blocksFileSize = 1;
-	rootInode->bytesFileSize = 2*sizeof(struct t2fs_record);
+	rootInode->bytesFileSize = 2*sizeof(rootRecord0);
 	rootInode->dataPtr[0] = 0;
 	rootInode->dataPtr[1] = INVALID_PTR;
 	rootInode->singleIndPtr = INVALID_PTR;
@@ -121,13 +227,29 @@ int setup(){
 		return -1;
 
 	//We must write in the "disk"
-	memcpy(buffer, rootRecord0, sizeof(stuct t2fs_record));
-	memcpy(buffer + sizeof(struct t2fs_record), rootRecord1, sizeof(stuct t2fs_record));
+	memcpy(buffer, rootRecord0, sizeof(rootRecord0));
+	memcpy(buffer + sizeof(rootRecord0), rootRecord1, sizeof(rootRecord0));
 	write_sector( (firstDataBlock*SECTOR_SIZE), buffer);
 
-	memcpy(buffer, rootInode0, sizeof(struct t2fs_inode));
+	memcpy(buffer, rootInode, sizeof(rootInode));
 	write_sector(inodeSector, buffer);
 	systemReady = 1;
+	int i;
+	for(i=0; i<10;i++)
+		openedFiles[i] = NULL;
+	
 	return 0;
 }
 
+int firstfreedatablock(){
+	short int bitmap;
+	short int mascara = 1;
+	short int val;
+
+	/* Le superbloco */
+	read_sector(0, &buffer);
+
+	buffer[8];
+
+	buffer[9];
+}
