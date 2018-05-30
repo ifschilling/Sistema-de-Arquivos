@@ -86,7 +86,7 @@ int setup(){
 
 	bytesInBlock = superBlock->blockSize * SECTOR_SIZE;
 	firstDataBlock = (1 + superBlock->freeInodeBitmapSize + superBlock->freeBlocksBitmapSize + superBlock->inodeAreaSize);
-	inodeSector = (1 + superBlock->freeBlocksBitmapSize + superBlock->freeInodeBitmapSize)*SECTOR_SIZE;
+	inodeSector = (1 + superBlock->freeBlocksBitmapSize + superBlock->freeInodeBitmapSize)*superBlock->blockSize;
 
 	///Initialise the root directory
 	currentDir = calloc(1, sizeof(dirDescription));
