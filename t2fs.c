@@ -9,6 +9,9 @@
 #include "../include/apidisk.h"
 /* talvez precise mais includes */
 
+#define INODE 0
+#define DATA 1
+
 /* STRUCTURES*/
 typedef struct files{	
 	char fullPathName[MAX_NAME_SIZE];
@@ -38,7 +41,7 @@ fileHandler *openedFiles[10];
 
 /* CREATED FUNCTIONS */
 int setup();
-int returnfirstfreedatablock();
+struct *t2fs_inode findInode(DWORD inumber)
 
 
 
@@ -75,27 +78,71 @@ int identify2(char *name, int size){
 }
 
 FILE2 create2 (char *filename){
-	if(!systemReady){
-		setup;
-	}else{
-		/* Criar registro para o novo arquivo dentro do diretorio pai(corrente) */
-		struct t2fs_record arq;
-		arq.TypeVal = TYPEVAL_REGULAR;
-		arq.name = *fileName;
-		arq.inodeNumber =
+struct t2fs_record regaux;
+struct t2fs_inode inodeaux;
 
-		struct t2fs_inode arqnode;
-		arqnode.blocksFileSize = 1; /* Inicializa com 1 bloco de dados sempre */
-		arqnode.bytesFileSize = 0;
-		arqnode.dataPtr[0] = ;
-		arqnode.dataPtr[1] = INVALID_PTR;
-		arqnode.singleIndPtr = INVALID_PTR;
-		arqnode.doubleIndPtr = INVALID_PTR;
-		arqnode.reservado[2] = {0,0};
 
+	if(!systemReady)
+		setup();
+
+
+	read_sector((currentDir->block) * (superBlock->blockSize), buffer);
+	memcpy(&regaux, buffer, sizeof(t2fs_record)); //primeiro registro do diretorio corrente
+
+	&inodeaux = findinode(regaux.inodeNumber);
+
+	memcpy(&regaux, buffer+(2*sizeof(t2fs_record)), sizeof(t2fs_record));
+
+	
+	int k;
+	int i;
+	DWORD rsector;
+
+	for(k=0; k<=indoeaux.blocksFileSize; k++){	//percorre blocos
+		if(k=0)
+			rsector = inode.dataPtr[0] * superBlock->blockSize;
+		else if(k=1)
+			rsector = inode.dataPtr[1] * superBlock->blockSize;
+		else if(k<=){
+			
+		}else{
+
+		}
+
+	
+		for(int i=0; i<=superblock->blockSize; i++){	//setores dentro do bloco
+			read_sector(rsector + i, buffer);
+
+
+		}
+	}
+	
+	
+	
+	
+
+
+
+
+	int n=0;
+	//varrer registros do diretorio pai, para checar se ha algum com o mesmo nome do arquivo que sera criado
+	for(int i=0, i<=((inode.blocksFileSize*SECTOR_SIZE)/superBlock.blocksize), i++){
+		n=0;
+		do{
+			if(strcmp(aux.name, filename)==0){
+				prinft("ERRO, filename already being used!");
+				return -1;
+			}
+			
+			memcpy(&aux, (buffer+(n*sizeof(t2fs_record))), sizeof(t2fs_record));
+			n++;
+		}while(aux.name!=NULL || n<(SECTOR_SIZE/sizeof(t2fs_record)));
 	}
 
 }
+
+
+(BLOCOS DO ARQUIVO * TAMANHO DO SETOR) / SETORES P BLOCO
 
 int delete2 (char *filename){
 
@@ -235,21 +282,22 @@ int setup(){
 	write_sector(inodeSector, buffer);
 	systemReady = 1;
 	int i;
-	for(i=0; i<10;i++)
-		openedFiles[i] = NULL;
+	
+	openedFiles = calloc(10, sizeof(fileHandler));
 	
 	return 0;
 }
 
-int firstfreedatablock(){
-	short int bitmap;
-	short int mascara = 1;
-	short int val;
 
-	/* Le superbloco */
-	read_sector(0, &buffer);
+struct *t2fs_inode findInode(DWORD inumber){
+	const long int inodesporsetor = SECTOR_SIZE/sizeof(struct t2fs_inode);	//numero de inodes em 256bytes
+	int offset = (inumber - (inumber/inodesporsetor)*inodesporsetor);
+	struct t2fs_inode inode;
+	
 
-	buffer[8];
+	read_sector(inodeSector+(inumber/inodesporsetor), buffer);
+	memcpy(&inode, buffer+offset, sizeof(struct t2fs_inode));
 
-	buffer[9];
+	return &inode;
+
 }
