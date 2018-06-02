@@ -17,9 +17,9 @@
 typedef struct files{	
 	char fullPathName[MAX_NAME_SIZE];
 	BYTE type;
-	int currentPointer;
+	int currentPointer; // bytes
 	int handle;
-	int size;
+	int size; // bytes
 }fileHandler;
 
 typedef struct cD{
@@ -44,7 +44,7 @@ fileHandler *openedFiles[10];
 /* AUXILIAR FUNCTIONS' DECLARATION */
 int setup();
 struct *t2fs_inode findInode(DWORD inumber);
-fileHandler findFileByName(*filename);
+fileHandler findFileByName(char *filename);
 
 
 /* MAIN FUNCTIONS */
@@ -203,7 +203,7 @@ Saída:	Se a operação foi realizada com sucesso, a função retorna o handle d
 -----------------------------------------------------------------------------*/
 FILE2 open2 (char *filename){
 	fileHandler file;
-	file = findFileByName(*filename);
+	file = findFileByName(filename);
 	file.currentPointer = 0;
 	
 	if(file.type == TYPEVAL_INVALIDO){
@@ -317,7 +317,22 @@ Saída:	Se a operação foi realizada com sucesso, a função retorna "0" (zero)
 	Em caso de erro, será retornado um valor diferente de zero.
 -----------------------------------------------------------------------------*/
 int seek2 (FILE2 handle, DWORD offset){
-	/* TO-DO */
+	fileHandler *file;
+	file = &(openedFiles[handle]);
+
+	if (offset > file->size) {
+		printf("ERROR: offset greater than filesize!\n");
+		return 1;
+	}
+
+	if(offset == -1){
+		file->currentPointer = file->size;
+	}
+	else {
+		file->currentPointer = offset;
+	}
+
+	return 0;
 }
 
 
@@ -558,6 +573,6 @@ Saída:	Se a operação foi realizada com sucesso, a função retorna o fileHand
 			type = TYPEVAL_REGULAR;
 		Em caso de erro, será retornado com type = TYPEVAL_INVALIDO.
 -----------------------------------------------------------------------------*/
-fileHandler findFileByName(*filename){
+fileHandler findFileByName(char *filename){
 	/* TO-DO */
 }
