@@ -236,7 +236,19 @@ Saída:	Se a operação foi realizada com sucesso, a função retorna "0" (zero)
 	Em caso de erro, será retornado um valor diferente de zero.
 -----------------------------------------------------------------------------*/
 int close2 (FILE2 handle){
-	/* TO-DO */
+	fileHandler *file;
+	file = &(openedFiles[handle]);
+	
+	if (file->type != TYPEVAL_REGULAR) {
+		printf("ERROR: handle file not found!\n");
+		return 1;
+	}
+
+	file->fullPathName[0] = '\0';
+	file->type = TYPEVAL_INVALIDO;
+	file->currentPointer = 0;
+	file->size = 0;
+	return 0;
 }
 
 
