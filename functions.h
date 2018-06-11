@@ -9,6 +9,15 @@
 #ifndef __functions_h__
 #define __functions_h__
 
+typedef struct files
+{
+    char fullPathName[MAX_NAME_FILE_NAME_SIZE+1];
+    BYTE type;
+    int currentPointer; // bytes
+    struct t2fs_inode inode;
+    DWORD numInode;
+} fileHandler;
+
 typedef struct cD
 {
     char pathName[MAX_FILE_NAME_SIZE +1];
@@ -24,7 +33,7 @@ struct coordinates{
 
 //GETTERS E SETTERS
 /*-----------------------------------------------------------------------------
-Função: Acha um registro que tenha o mesmo nome do último argumento de regName.
+Função: Acha um registro que tenha o mesmo nome do último argumento de path.
 Entrada: path -> Caminho absoluto ou relativo do registro(onde o ultimo argumento sera o nome do registro a ser procurado).
 Saída: Se a operação foi realizada com sucesso, a função retorna a struct coordinates com o registro do arquivo encontrado, junto com o ultimo setor acessado, ultima posicao acessada e numero de bytes lidos.
 		    Em caso de erro, será retornado o registro com TypeVal = TYPEVAL_INVALIDO. (testar struct coordinates.registro.Typeval == TYPEVAL_INVALIDO)
@@ -36,14 +45,14 @@ struct coordinates getReg(char *path);
 
 /*-----------------------------------------------------------------------------
 Função: Copia os dados do registro reg para o registro dado por abspath.
-Entrada: abspath -> Caminho absoluto do registro que será alterado ou criado (o último argumento é o nome do registro a ser alterado).
+Entrada: path -> Caminho absoluto ou relativo do registro que será alterado ou criado (o último argumento é o nome do registro a ser alterado).
           reg -> estrutura com os campos que serão copiados para o registro apontado por regname
 Saída: Se a operação foi realizada com sucesso, a função retorna 0.
 		    Em caso de erro, será retornado -1.
 Exemplo: setReg(reg, "/p1/p2/p3") => alterará o registro do diretorio p3
         setReg(reg, "/p1/p2/p3/texto.txt") => alterará o registro do arquivo texto.txt
 -----------------------------------------------------------------------------*/
-int setReg(struct t2fs_record reg, char *abspath);
+int setReg(struct t2fs_record reg, char *path);
 
 /*-----------------------------------------------------------------------------
 Função:	Procura um registro VALIDO com nome igual a name, no diretorio apontado por dirReg
@@ -78,7 +87,7 @@ Entrada: inodeNum -> número do inode
           
 Saída: Retorna 0 se for realizada com sucesso, senão retorna 1.
 -----------------------------------------------------------------------------*/
-int setInode(struct t2fs_inode, DWORD inodeNumber);
+int setInode(struct t2fs_inode inode, DWORD inodeNumber);
 
 
 
@@ -115,10 +124,16 @@ unsigned int blockFirstSector(unsigned int block);
 /*-----------------------------------------------------------------------------------
 Função: Percorre os blocos que estão sendo utilizados pelo inode e libera eles
 Entrada:  inode -> número do inode do arquivo 
-          cPointer -> Se -1 apaga todos os bytes, se outro valor maior que zero apaga 
-          a partir do "cPointer"(inclusive)
 Saída: Retorna 0 se for realizada com sucesso, senão retorna um valor negativo
 -----------------------------------------------------------------------------------*/
-int delBlocks(DWORD inode, int cPointer);
+int delBlocks(DWORD inode);
+
+/*-----------------------------------------------------------------------------------
+Função: Percorre os arquivos abertos e 
+Entrada:  inode -> número do inode do arquivo 
+Saída: Retorna 0 se for realizada com sucesso, senão retorna um valor negativo
+-----------------------------------------------------------------------------------*/
+int isFileOpen(DWORD inode);
+
 
 #endif

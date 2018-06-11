@@ -323,16 +323,14 @@ iPosition = inodeNumber % inode_per_sector;
 			if(setBitMap2(BITMAP_INODE, inodeNumber, 1))
 					printf("ERROR, trying to update inode bitmap! (Function: modifyInode) \n");
 
-	if( !read_sector(iSector, iBuf) )
-	{
+	if(read_sector(iSector, iBuf) ){
 			printf("ERROR reading sector: %i in modifyInode \n", iSector);
 			return -1;
 	}
 	/*  Now iBuf has our iNode and others as well, we must modify only the one we want */
 	/*  e.g inode number 14, if 3 per sector 14/3 = 4; 14%3 = 1 so sector 4, struct 1*/
 	memcpy(iBuf + (iPosition*sizeof(t2fs_inode)), inode, sizeof(t2fs_inode));
-	if( !write_sector(iSector, iBuf) )
-	{
+	if(write_sector(iSector, iBuf) ){
 			printf("ERROR writing sector %i in modifyInode", iSector);
 			return -1;
 	}
@@ -372,7 +370,7 @@ int absolutePath(char *abspath, char *path){
 			// diretorio pai, apaga o ultimo name salvo
 			if(cont > 0){
 				cont--;
-			}	
+			}
 		}
 		else{
 			strcpy(name[cont], token); // passa o token pra uma string do nome
@@ -419,74 +417,76 @@ int delBlocks(DWORD inode, int cPointer){
   DWORD blocksRemaining = delNode.blocksFileSize;
   DWORD iBSector = SECTOR_SIZE/sizeof(DWORD);/*pointers by sector*/
 
-  DWORD dBlocksToDel;
-  BYTE delBuff;
-  DWORD indexSectorsToRead;
-  DWORD sFirstBlockSector;
-  DWORD bIndex, bDataFinalPosition;
-  dBlocksToDel = blocksRemaining;
+	DWORD dBlocksToDel;
+	BYTE delBuff;
+	DWORD indexSectorsToRead;
+	DWORD sFirstBlockSector;
+	DWORD bIndex, bDataFinalPosition;
+	dBlocksToDel = blocksRemaining;
 
-  DWORD arrayOfDataBlocks[dBlocksToDel];
+/*-----------------------------------------------------------------------*/
+	DWORD trunc_blocksToKeep = cPointer/bytesInBlock;/*biB 16; cp 17(0,5,15)(16,31) */
+	if(cPointer % bytesInBlock != 0)
+				trunc_blocksToKeep++;
+
+	DWORD trunc_indexToDel, trunc_deletedBlocks = 0;
+	DWORD trunc_firstBlockToDel = trunc_blocksToKeep + 1;
+	DWORD trunc_blocksToDel = delNode.blocksFileSize - trunc_blocksToKeep;
+/*-----------------------------------------------------------------------*/
+	DWORD arrayOfDataBlocks[dBlocksToDel];
   
-  int i, j;
-  int k, l;
-  /*-------------------------------------------------------------------------------*/
-  DWORD remainingBytes = delNode.bytesFileSize - (cPointer+2);//bytes to delete
-  DWORD blockOfPointer = cPointer/bytesInBlock;
-  if( (cPointer % bytesInBlock) != 0)
-  	blockOfPointer++;
-  
-  /*-------------------------------------------------------------------------------*/
- 
+	int i, j;
+	int k, l;
+
       // From end to the first block
-  if(blocksRemaining > (2 + PointersInBlock)){ /* double Indirection */
-  	if(cPointer == -1){/*DELETE*/
-	    DWORD dfirstBlockSector = blockFirstSector(delNode.doubleIndPtr);
-	    dBlocksToDel = blocksRemaining - ( 2 + PointersInBlock);
+	if(blocksRemaining > (2 + PointersInBlock)){ /* double Indirection */
+  	
+		DWORD dfirstBlockSector = blockFirstSector(delNode.doubleIndPtr);
+		dBlocksToDel = blocksRemaining - ( 2 + PointersInBlock);
 
-	   bIndex = (dBlocksToDel / PointersInBlock) + 1;/*double indirection block of index*/
-	   bDataFinalPosition = dBlocksToDel % PointersInBlock;/*Last valid block position*/
+		bIndex = (dBlocksToDel / PointersInBlock) + 1;/*double indirection block of index*/
+		bDataFinalPosition = dBlocksToDel % PointersInBlock;/*Last valid block position*/
 
-	    /*We have to read just the correct amount of block index*/
-	    indexSectorsToRead = bIndex /iBSector;//
-	    if( (bIndex % iBSector) != 0 )
-	    	indexSectorsToRead++;
-	   
-	    /*array of blocks of index and their dataBlocks*/
-	    DWORD arrayOfBlockIndex[bIndex];
+    /*We have to read just the correct amount of block index*/
+		indexSectorsToRead = bIndex /iBSector;//
+		if( (bIndex % iBSector) != 0 )
+			indexSectorsToRead++;
+   
+		/*array of blocks of index and their dataBlocks*/
+		DWORD arrayOfBlockIndex[bIndex];
 
-	    k = 0;
-	    for(i = 0; i < indexSectorsToRead; i++){/*block of index in each sector*//
-	    	if( read_sector(dfirstBlockSector + i, &delBuff) ){
-		    	printf("Error in delBlocks,failed to read sector %i\n", dfirstBlockSector+i);
-		    	return -1;
-		    }
-		    for(j = 0; j<iBSector;j++){
-		    	if(k < bIndex){
-		    		memcpy(&arrayOfBlockIndex[k], delBuff+(sizeof(DWORD)*j), sizeof(DWORD));/*This is the block of indexes*/
-		    		k++;
-		    	}
-		    }
-		  }
-			/* We have all the blocks of index */
-		  l = 0;
-		  for( i = 0; i < bIndex, i++){/*Each index block*/
-		  	sFirstBlockSector = blockFirstSector(arrayOfBlockIndex[i]);/*First Block of the single index block*/
-		  	for(j = 0; j < iBSector; j++){
-		  		if( read_sector(sFirstBlockSector + j, &delBuff) ){
-		    		printf("Error in delBlocks,failed to read sector %i\n", sFirstBlockSector+j);
-		    		return -1;
-		    	}
-		    	for(k = 0; k <iBSector; k++){
-		    		if(l < dBlocksToDel){
-		    			memcpy(&arrayOfDataBlocks[l], delBuff + (k*sizeof(DWORD)), sizeof(DWORD));
-		    			l++;
-		    		}
-		    	}
-		  	}
-		  }
+		k = 0;
+    for(i = 0; i < indexSectorsToRead; i++){/*block of index in each sector*//
+    	if( read_sector(dfirstBlockSector + i, &delBuff) ){
+	    	printf("Error in delBlocks,failed to read sector %i\n", dfirstBlockSector+i);
+	    	return -1;
+	    }
+	    for(j = 0; j<iBSector;j++){
+	    	if(k < bIndex){
+	    		memcpy(&arrayOfBlockIndex[k], delBuff+(sizeof(DWORD)*j), sizeof(DWORD));/*This is the block of indexes*/
+	    		k++;
+	    	}
+	    }
+	  }
+		/* We have all the blocks of index */
+		l = 0;
+		for( i = 0; i < bIndex, i++){/*Each index block*/
+	  	sFirstBlockSector = blockFirstSector(arrayOfBlockIndex[i]);/*First Block of the single index block*/
+	  	for(j = 0; j < iBSector; j++){
+	  		if( read_sector(sFirstBlockSector + j, &delBuff) ){
+	    		printf("Error in delBlocks,failed to read sector %i\n", sFirstBlockSector+j);
+	    		return -1;
+	    	}
+	    	for(k = 0; k <iBSector; k++){
+	    		if(l < dBlocksToDel){
+	    			memcpy(&arrayOfDataBlocks[l], delBuff + (k*sizeof(DWORD)), sizeof(DWORD));
+	    			l++;
+	    		}
+	    	}
+	  	}
+	  }
 
-		  /*Now we have to free all the blocks*/
+	  if(cPointer == -1 || cPointer == 0){/*Now we have to free all the blocks*/
 		  for(i = 0; i< bIndex; i++){
 		  	if ( setBitmap2(BITMAP_DADOS,arrayOfBlockIndex[i], 0) ){
           printf("ERROR setting bits in delBlocks\n");
@@ -507,13 +507,80 @@ int delBlocks(DWORD inode, int cPointer){
       blocksRemaining -= dBlocksToDel;
 	  }
 	  else{/*Truncate*/
-      
+	  	/*We must delete from the last to first entry in the arrayOfDataBlocks*/
+	  	for(i = (dBlocksToDel-1); i >= 0; i--;){ /*Delete the last blocks*/
+	  		if(trunc_blocksToDel > 0){
+	  			if ( setBitmap2(BITMAP_DADOS,arrayOfDataBlocks[i], 0) ){
+         		printf("ERROR setting bits in delBlocks\n");
+         		return -1;
+       		}
+       		trunc_blocksToDel--;
+	  		}
+	  	}
+
+	  	/*pB = 4; A(0,1,2,3)B(4,5,6,7)C(8,9,x,11) */
+  		k=0;
+  		DWORD trunc_matrix[bIndex][PointersInBlock];
+  		for(i = 0; i< bIndex; i++){
+  			for(j = 0; j <PointersInBlock; j++){
+  				if(k<dBlocksToDel){
+  					trunc_matrix[i][j] = arrayOfDataBlocks[(i*PointersInBlock)+j];
+  					k++;
+  				}
+  				
+  			}
+  		}
+  		/*Find how many index blocks we can delete*/
+  		int fInd = -1;
+  		int fPos;
+  		trunc_indexToDel = 0;
+  		k = 0;
+  		for(i = 0; i< bIndex; i++){
+  			for(j = 0; j <PointersInBlock; j++){
+  				if(k<dBlocksToDel){
+  					if( getBitmap2(trunc_matrix[i][j]) == 0){/*Deleted block*/
+  						if(fInd == -1){
+  							fPos = j;
+  							fInd = i;
+  						}
+  					}
+  					k++;
+  				}
+  			}
+  		}
+  		if( fPos == 0){
+  			trunc_indexToDel = bIndex-fInd;
+  		}
+  		else{
+  			trunc_indexToDel = bIndex- find - 1;
+  		}
+	  	k = trunc_indexToDel;
+
+	  	for(i = (bIndex -1) ; i>=0; i--){
+	  			if(trunc_indexToDel > 0){
+	  				if ( setBitmap2(BITMAP_DADOS,arrayOfBlockIndex[i], 0) ){
+         			printf("ERROR setting bits in delBlocks\n");
+         			return -1;
+       			}
+       			trunc_indexToDel--;
+	  			}
+	  	}
+	  	if(k == bIndex){//We had to delete all the double indirection blocks
+	  		 if ( setBitmap2(BITMAP_DADOS,delNode.doubleIndPtr, 0) ){
+          printf("ERROR setting bits in delBlocks\n");
+          return -1;
+        }
+	  	}
+	  	blocksRemaining -= dBlocksToDel;
+
+	  	//end of else truncate
 	  }	  	
   }
 
   /*Single indirection*/
   if(blocksRemaining > 2){
-    dBlocksToDel = blocksRemaining - 2;
+  	
+		dBlocksToDel = blocksRemaining - 2;
 		sFirstBlockSector = blockFirstSector(delNode.singleIndPtr);/*First Block of the single index block*/
 
     indexSectorsToRead = dBlocksToDel /iBSector;//
@@ -535,22 +602,51 @@ int delBlocks(DWORD inode, int cPointer){
   	}
 
   	/*Release the blocks*/
-  	if ( setBitmap2(BITMAP_DADOS,delNode.singleIndPtr, 0) ){
-      printf("ERROR setting bits in delBlocks\n");
-      return -1;
-    }
+  	if(cPointer == -1 || cPointer == 0){
+	  	if ( setBitmap2(BITMAP_DADOS,delNode.singleIndPtr, 0) ){
+	      printf("ERROR setting bits in delBlocks\n");
+	      return -1;
+	    }
 
-  	for(i = 0; i< dBlocksToDel; i++){
-		  if ( setBitmap2(BITMAP_DADOS,arrayOfDataBlocks[i], 0) ){
-        printf("ERROR setting bits in delBlocks\n");
-        return -1;
-      }
-		}
-      blocksRemaining -= dBlocksToDel;
+	  	for(i = 0; i< dBlocksToDel; i++){
+			  if ( setBitmap2(BITMAP_DADOS,arrayOfDataBlocks[i], 0) ){
+	        printf("ERROR setting bits in delBlocks\n");
+	        return -1;
+	      }
+			}
+
+	      blocksRemaining -= dBlocksToDel;
+	      //end of delete all
+	  }
+	  
+  	
+  	else{ /*TRUNCATE*/	
+
+		  for(i = (dBlocksToDel-1); i >= 0; i--;){ /*Delete the last blocks*/
+		  		if(trunc_blocksToDel > 0){
+		  			if ( setBitmap2(BITMAP_DADOS,arrayOfDataBlocks[i], 0) ){
+	         		printf("ERROR setting bits in delBlocks\n");
+	         		return -1;
+	       		}
+	       		trunc_blocksToDel--;
+		  		}
+		  	}
+		  if(trunc_blocksToDel > 0){/*The currentPointer is in the direct blocks*/
+		  	if ( setBitmap2(BITMAP_DADOS,delNode.singleIndPtr, 0) ){
+		      printf("ERROR setting bits in delBlocks\n");
+		      return -1;
+		    }
+		  }
+
+		  blocksRemaining -= dBlocksToDel;
+  	//end of truncate
+  	}
     
+    return 0;   
   }
+
   /*Direct blocks*/
-  if(cPointer == -1){/*DELETE ALL*/
+  if(cPointer == -1 || cPointer == 0){/*DELETE ALL*/
   	if( setBitmap2(BITMAP_DADOS, delNode.dataPtr[0], 0) ){
   		printf("ERROR setting bits in delBlocks\n");
   		return -1;
@@ -560,7 +656,30 @@ int delBlocks(DWORD inode, int cPointer){
   		return -1;
   	}
   }
+  else if(trunc_blocksToDel != 0){/*TRUNCATE*/
+
+  	 for(i = 1; i >= 0; i--;){ /*Delete the last blocks*/
+		  		if(trunc_blocksToDel > 0){
+		  			if ( setBitmap2(BITMAP_DADOS,delNode.dataPtr[i], 0) ){
+	         		printf("ERROR setting bits in delBlocks\n");
+	         		return -1;
+	       		}
+	       		trunc_blocksToDel--;
+		  		}
+		  	}
+  }
   
   return 0;
   
+}
+
+int isFileOpen(DWORD inode){
+  fileHandler temp;
+  int i;
+  for(i = 0; i < 10; i++){
+    temp = openedFiles[i];
+    if( temp.numInode == inode)
+      return 1;
+  }
+  return 0;
 }
