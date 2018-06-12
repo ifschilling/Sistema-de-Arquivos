@@ -6,6 +6,8 @@
 #include "../include/apidisk.h"
 #include "../include/functions.h"
 
+#define MAX_NUM_FILES 10
+
 /* GLOBAL VARIABLES */
 dirDescription currentDir;
 int bytesInBlock;
@@ -13,8 +15,100 @@ int firstDataBlock;
 int inodeSector;
 int inode_per_sector;
 DWORD PointersInBlock;
+fileHandler openedFiles[MAX_NUM_FILES];
+struct t2fs_superbloco superBlock;
 
 
+
+int setup(){
+	//Create root directory and prepare the file
+	if( (read_sector(0, buffer)) ){
+		printf("Could not read first sector\n");
+		return -1;
+	}
+
+	strncpy(superBlock.id,(char*) buffer, 4); //ID
+	if(strcmp(superBlock.id, "T2FS") != 0){
+		printf("Error, not T2FS\n");
+		return -1;
+	}
+	char temp[4];
+
+	strncpy(temp, buffer+4, 2); //version
+	superBlock.version = (WORD)atoi(temp);
+
+	strncpy(temp, buffer+6, 2);
+	superBlock.superblockSize = (WORD)atoi(temp);
+
+	strncpy(temp, buffer+8, 2);
+	superBlock.freeBlocksBitmapSize =(WORD)atoi(temp);
+
+	strncpy(temp, buffer+10, 2);
+	superBlock.freeInodeBitmapSize =(WORD)atoi(temp);
+
+	strncpy(temp, buffer+12, 2);
+	superBlock.inodeAreaSize =(WORD)atoi(temp);
+
+	strncpy(temp, buffer+14, 2);
+	superBlock.blockSize =(WORD)atoi(temp);
+
+	strncpy(temp, buffer+12, 2);
+	superBlock.diskSize =(DWORD)atoi(temp);
+
+	//Setting up global variables
+	bytesInBlock = superBlock.blockSize * SECTOR_SIZE;
+	firstDataBlock = (1 + superBlock.freeInodeBitmapSize + superBlock.freeBlocksBitmapSize + superBlock.inodeAreaSize);
+	inodeSector = (1 + superBlock.freeBlocksBitmapSize + superBlock.freeInodeBitmapSize)*blockSize;
+	inodeAux = SECTOR_SIZE/sizeof(struct t2fs_inode);
+	PointersInBlock= bytesInBlock/sizeof(DWORD);                     //ponteiros indiretos em um bloco de dados;
+	inode_per_sector = SECTOR_SIZE / sizeof(DWORD);	
+	
+	///Initialise the root directory
+	strcpy(currentDir.pathName, "/");
+	currentDir.block = firstDataBlock;
+
+	//First two records must be current directory and father directory
+	struct t2fs_record rootRecord0, rootRecord1;
+	rootRecord0.TypeVal = TYPEVAL_DIRETORIO;
+	strcpy(rootRecord0.name, ".");
+	rootRecord0.inodeNumber = 0;
+
+	rootRecord1.TypeVal = TYPEVAL_DIRETORIO;
+	strcpy(rootRecord1.name, "..");
+	rootRecord1.inodeNumber = 0;
+
+	//Inode initialization
+	struct t2fs_inode rootInode;
+	rootInode.blocksFileSize = 1;
+	rootInode.bytesFileSize = 2*sizeof(rootRecord0);
+	rootInode.dataPtr[0] = 0;
+	rootInode.dataPtr[1] = INVALID_PTR;
+	rootInode.singleIndPtr = INVALID_PTR;
+	rootInode.doubleIndPtr = INVALID_PTR;
+
+	//Now we set the bitmap of blocks and Inode
+
+	if( setBitMap2(BITMAP_INODE, 0, 1))
+		return -1; // FAILED
+
+	if( setBitMap2(BITMAP_DADOS, 0, 1))
+		return -1;
+
+	//We must write in the "disk"
+	memcpy(buffer, rootRecord0, sizeof(rootRecord0));
+	memcpy(buffer + sizeof(rootRecord0), rootRecord1, sizeof(rootRecord0));
+	write_sector( (firstDataBlock*SECTOR_SIZE), buffer);
+
+	memcpy(buffer, rootInode, sizeof(rootInode));
+	write_sector(inodeSector, buffer);
+
+	int i;
+	for(i=0; i<MAX_NUM_FILES; i++)
+		openedFiles[i].type = TYPEVAL_INVALIDO;
+
+	systemReady = 1;
+	return 0;
+}
 
 struct coordinates getReg(char *path){
 	char *token;
@@ -66,7 +160,7 @@ DWORD buffer[SECTOR_SIZE];
 			token = strtok(NULL, "/");
 			strcpy(lastoken,token);
 		}
-		strncpy(nameaux, path, (strlen(path)-strlen(lastoken)+1));		//    /p1/p2/p5/p4/p6/texto
+		strncpy(nameaux, path, (strlen(path)-strlen(lastoken)-1));		//    /p1/p2/p5/p4/p6/texto
 		regAux = getReg(nameaux);
 		info = getNewRegCoordinates(regAux);
 		if(info.bytesread==-1){
@@ -99,7 +193,7 @@ DWORD buffer[SECTOR_SIZE];
 struct coordinates getReginDir(char *name, struct t2fs_record dirReg){
 int dirBlocks=0, offsetDirBlock=0, offsetSingleIndBlock=0, t=0, offsetDoubleIndBlock=0, h=0, g=0, j=0, z=0;
 DWORD rsector;
-DWORD pointer, indpointer;
+DWORD pointer=0, indpointer=0;
 BYTE sindbuffer[SECTOR_SIZE];
 BYTE dindbuffer[SECTOR_SIZE];
 int bytesread=0;  //contabiliza o total de bytes que ja foram lidos
@@ -110,67 +204,79 @@ struct coordinates info;
 	
 	if(dirReg.TypeVal==TYPEVAL_DIRETORIO){
 		if(strcmp(name, ".") == 0){ // retorna o mesmo diretorio
-			return dirReg; 
+			info.record = dirReg;
+			return info; 
 		}else if(strcmp(name, "..") == 0){  // retorna o diretorio pai
 			inodeAux = getInode(dirReg.inodeNumber);
 			if(inodeAux.bytesFileSize == -1){
 				regAux.TypeVal == TYPEVAL_INVALIDO;
-				return regAux;
+				info.record = regAux;
+				return info;
 			}
 			read_sector(blockFirstSector(inodeAux.dataPtr[0]), sindbuffer);
 			memcpy(&regAux, (sindbuffer + sizeof(struct t2fs_inode)), sizeof(struct t2fs_inode));
-			return regAux;
+			info.lastReadSector = 0;
+			info.lastAcessedPosition = 1;
+			info.record = regAux;
+			return info;
 		}
 
 		inodeAux = getInode(dirReg.inodeNumber);
 		if(inodeAux.bytesFileSize == -1){
 			regAux.TypeVal == TYPEVAL_INVALIDO;
-			return regAux;
+			info.record = regAux;
+			return info;
 		}
 		for(dirBlocks=0; dirBlocks < inodeAux.blocksFileSize; dirBlocks++){ //percorre blocos
 			if(dirBlocks==0)
-				rsector = (inodeAux.dataPtr[0] * superBlock->blockSize);
+				rsector = (inodeAux.dataPtr[0] * superBlock.blockSize);
 			else if(dirBlocks==1)
-				rsector = (inodeAux.dataPtr[1] * superBlock->blockSize);
-			else if(dirBlocks<PointersInBlock){ //INDIRECAO SIMPLES
-				if(offsetSingleIndBlock < superblock->blockSize){
-					read_sector((blockFirstSector(inodeAux.singleIndPtr)) + offsetSingleIndBlock, sindbuffer);
-					offsetSingleIndBlock++;
-					t=0;
+				rsector = (inodeAux.dataPtr[1] * superBlock.blockSize);
+			else if(dirBlocks<(PointersInBlock+2)){ //INDIRECAO SIMPLES
+					if(offsetSingleIndBlock < superBlock.blockSize){
+						if(t==(SECTOR_SIZE/sizeof(DWORD)) || offsetSingleIndBlock == 0){
+							read_sector((blockFirstSector(inodeAux.singleIndPtr)) + offsetSingleIndBlock, sindbuffer);
+							offsetSingleIndBlock++;
+							t=0;
+						}
+					}
 
-					if(t < (PointersInBlock/superBlock->blockSize)){
+					if(t < (SECTOR_SIZE/sizeof(DWORD))){
 						memcpy(&pointer, sindbuffer+(t*sizeof(DWORD)), sizeof(DWORD));
 						rsector = (blockFirstSector(pointer));
 						t++;
 					}
-				}
 			}else{ //INDIRECAO DUPLA
-				if(offsetDoubleIndBlock<superBlock->blockSize){
-					read_sector((blockFirstSector(inodeAux.doubleIndPtr))+offsetDoubleIndBlock, dindbuffer);
-					offsetDoubleIndBlock++;
-					h=0;
-
-					if(h<(PointersInBlock/superBlock->blockSize)){
-						memcpy(&indpointer, dindbuffer + (h*sizeof(DWORD)), sizeof(DWORD));
-						h++;
-						j=0;
-
-						if(j<superblock->blockSize){
-							read_sector((blockFirstSector(indpointer)) + j, indbuffer);
-							j++;
-							g=0;
-
-							if(g<(PointersInBlock/superBlock->blockSize)){
-								memcpy(&pointer, indbuffer+(g*sizeof(DWORD)), sizeof(DWORD));
-								rsector = (blockFirstSector(pointer));
-								g++;
-							}
-						}
+				if(offsetDoubleIndBlock < superBlock.blockSize){
+					if(h==SECTOR_SIZE/sizeof(DWORD) || offsetDoubleIndBlock == 0){
+						read_sector((blockFirstSector(inodeAux.doubleIndPtr))+offsetDoubleIndBlock, dindbuffer);
+						offsetDoubleIndBlock++;
+						h=0;
 					}
+				}
+
+				if((((blockFirstSector(indpointer)+(superblock.blockSize)) == (j+blockFirstSector(indpointer))) && g==(SECTOR_SIZE/sizeof(DWORD))) || h==0){
+					memcpy(&indpointer, dindbuffer + (h*sizeof(DWORD)), sizeof(DWORD));
+					h++;
+					j=0;
+				}
+			
+				if(j<superBlock.blockSize){
+					if(g==(SECTOR_SIZE/sizeof(DWORD)) || j == 0){
+						read_sector((blockFirstSector(indpointer)) + j, indbuffer);
+						j++;
+						g=0;
+					}
+				}
+
+				if(g<(SECTOR_SIZE/sizeof(DWORD))){
+					memcpy(&pointer, indbuffer+(g*sizeof(DWORD)), sizeof(DWORD));
+					rsector = (blockFirstSector(pointer));
+					g++;
 				}
 			}
 			
-			for(offsetDirBlock=0; offsetDirBlock<superblock->blockSize; offsetDirBlock++){ //setores dentro do bloco
+			for(offsetDirBlock=0; offsetDirBlock<superBlock.blockSize; offsetDirBlock++){ //setores dentro do bloco
 				read_sector(rsector + offsetDirBlock, buffer);
 				z=0;
 				do{
@@ -218,61 +324,66 @@ struct coordinates getNewRegCoordinates(struct t2fs_record dirReg){
 			return regAux;
 		}
 		
-		if(indeAux.bytesFileSize==(inodeAux.blocksFileSize * superblock->blockSize * SECTOR_SIZE)){	//ARQUIVO CHEIO
+		if(indeAux.bytesFileSize==(inodeAux.blocksFileSize * superBlock.blockSize * SECTOR_SIZE)){	//ARQUIVO CHEIO
 			info.bytesread = -1;
 			return info
 		}
 		
 		newreg = getReg(path);
 		
-		if(((indeAux.bytesFileSize)%(inodeAux.blocksFileSize * superblock->blockSize * SECTOR_SIZE))==0)	//checa se o final dos dados coincide com o final de algum bloco
+		if(((indeAux.bytesFileSize)%(inodeAux.blocksFileSize * superBlock.blockSize * SECTOR_SIZE))==0)	//checa se o final dos dados coincide com o final de algum bloco
 			plus = 1;	
 			
 		for(dirBlocks=0; dirBlocks < (inodeAux.blocksFileSize+plus); dirBlocks++){ //percorre blocos
 			if(dirBlocks==0)
-				rsector = (inodeAux.dataPtr[0] * superBlock->blockSize);
+				rsector = (inodeAux.dataPtr[0] * superBlock.blockSize);
 			else if(dirBlocks==1)
-				rsector = (inodeAux.dataPtr[1] * superBlock->blockSize);
-			else if(dirBlocks<PointersInBlock){ //INDIRECAO SIMPLES
-				if(offsetSingleIndBlock < superblock->blockSize){
-					read_sector((blockFirstSector(inodeAux.singleIndPtr)) + offsetSingleIndBlock, sindbuffer);
-					offsetSingleIndBlock++;
-					t=0;
+				rsector = (inodeAux.dataPtr[1] * superBlock.blockSize);
+			else if(dirBlocks<(PointersInBlock+2)){ //INDIRECAO SIMPLES
+					if(offsetSingleIndBlock < superBlock.blockSize){
+						if(t==(SECTOR_SIZE/sizeof(DWORD)) || offsetSingleIndBlock == 0){
+							read_sector((blockFirstSector(inodeAux.singleIndPtr)) + offsetSingleIndBlock, sindbuffer);
+							offsetSingleIndBlock++;
+							t=0;
+						}
+					}
 
-					if(t < (PointersInBlock/superBlock->blockSize)){
+					if(t < (SECTOR_SIZE/sizeof(DWORD))){
 						memcpy(&pointer, sindbuffer+(t*sizeof(DWORD)), sizeof(DWORD));
 						rsector = (blockFirstSector(pointer));
 						t++;
 					}
-				}
-			}
-			else{ //INDIRECAO DUPLA
-				if(offsetDoubleIndBlock<superBlock->blockSize){
-					read_sector((blockFirstSector(inodeAux.doubleIndPtr))+offsetDoubleIndBlock, dindbuffer);
-					offsetDoubleIndBlock++;
-					h=0;
-
-					if(h<(PointersInBlock/superBlock->blockSize)){
-						memcpy(&indpointer, dindbuffer + (h*sizeof(DWORD)), sizeof(DWORD));
-						h++;
-						j=0;
-						
-						if(j<superblock->blockSize){
-							read_sector((blockFirstSector(indpointer)) + j, indbuffer);
-							j++;
-							g=0;
-
-							if(g<(PointersInBlock/superBlock->blockSize)){
-								memcpy(&pointer, indbuffer+(g*sizeof(DWORD)), sizeof(DWORD));
-								rsector = (blockFirstSector(pointer));
-								g++;
-							}
-						}
+			}else{ //INDIRECAO DUPLA
+				if(offsetDoubleIndBlock < superBlock.blockSize){
+					if(h==SECTOR_SIZE/sizeof(DWORD) || offsetDoubleIndBlock == 0){
+						read_sector((blockFirstSector(inodeAux.doubleIndPtr))+offsetDoubleIndBlock, dindbuffer);
+						offsetDoubleIndBlock++;
+						h=0;
 					}
 				}
+
+				if((((blockFirstSector(indpointer)+(superblock.blockSize)) == (j+blockFirstSector(indpointer))) && g==(SECTOR_SIZE/sizeof(DWORD))) || h==0){
+					memcpy(&indpointer, dindbuffer + (h*sizeof(DWORD)), sizeof(DWORD));
+					h++;
+					j=0;
+				}
+			
+				if(j<superBlock.blockSize){
+					if(g==(SECTOR_SIZE/sizeof(DWORD)) || j == 0){
+						read_sector((blockFirstSector(indpointer)) + j, indbuffer);
+						j++;
+						g=0;
+					}
+				}
+
+				if(g<(SECTOR_SIZE/sizeof(DWORD))){
+					memcpy(&pointer, indbuffer+(g*sizeof(DWORD)), sizeof(DWORD));
+					rsector = (blockFirstSector(pointer));
+					g++;
+				}
 			}
 
-			for(offsetDirBlock=0; offsetDirBlock<superblock->blockSize; offsetDirBlock++){ //setores dentro do bloco
+			for(offsetDirBlock=0; offsetDirBlock<superBlock.blockSize; offsetDirBlock++){ //setores dentro do bloco
 				read_sector(rsector + offsetDirBlock, buffer);
 				z=0;
 				do{
@@ -313,6 +424,78 @@ struct t2fs_inode inode;
 	return inode;
 }
 
+struct t2fs_record readRegs(struct t2fs_inode inode){
+struct t2fs_record regAux;
+
+	
+	for(; info.dirBlocks < inode.blocksFileSize; info.dirBlocks++){ //percorre blocos
+		if(info.dirBlocks==0)
+			rsector = (inode.dataPtr[0] * superBlock.blockSize);
+		else if(info.dirBlocks==1)
+			info.rsector = (inode.dataPtr[1] * superBlock.blockSize);
+		else if(info.dirBlocks<(PointersInBlock+2)){ //INDIRECAO SIMPLES
+				if(info.offsetSingleIndBlock < superBlock.blockSize){
+					if(info.t==(SECTOR_SIZE/sizeof(DWORD)) || info.offsetSingleIndBlock == 0){
+						read_sector((blockFirstSector(inode.singleIndPtr)) + info.offsetSingleIndBlock, info.sindbuffer);
+						info.offsetSingleIndBlock++;
+						info.t=0;
+					}
+				}
+
+				if(info.t < (SECTOR_SIZE/sizeof(DWORD))){
+					memcpy(&info.pointer, info.sindbuffer+(info.t*sizeof(DWORD)), sizeof(DWORD));
+					info.rsector = (blockFirstSector(info.pointer));
+					info.t++;
+				}
+		}else{ //INDIRECAO DUPLA
+			if(info.offsetDoubleIndBlock < superBlock.blockSize){
+				if(info.h==SECTOR_SIZE/sizeof(DWORD) || info.offsetDoubleIndBlock == 0){
+					read_sector((blockFirstSector(inode.doubleIndPtr))+info.offsetDoubleIndBlock, info.dindbuffer);
+					info.offsetDoubleIndBlock++;
+					info.h=0;
+				}
+			}
+
+			if((((blockFirstSector(info.indpointer)+(superblock.blockSize)) == (info.j+blockFirstSector(info.indpointer))) && info.g==(SECTOR_SIZE/sizeof(DWORD))) || info.h==0){
+				memcpy(&info.indpointer, info.dindbuffer + (info.h*sizeof(DWORD)), sizeof(DWORD));
+				info.h++;
+				info.j=0;
+			}
+
+			if(info.j<superBlock.blockSize){
+				if(info.g==(SECTOR_SIZE/sizeof(DWORD)) || info.j == 0){
+					read_sector((blockFirstSector(info.indpointer)) + info.j, info.indbuffer);
+					info.j++;
+					info.g=0;
+				}
+			}
+
+			if(info.g<(SECTOR_SIZE/sizeof(DWORD))){
+				memcpy(&info.pointer, info.indbuffer+(info.g*sizeof(DWORD)), sizeof(DWORD));
+				info.rsector = (blockFirstSector(info.pointer));
+				info.g++;
+			}
+		}
+
+		for(; info.offsetDirBlock<superBlock.blockSize; info.offsetDirBlock++){ //setores dentro do bloco
+			read_sector(info.rsector + info.offsetDirBlock, info.buffer);
+			info.z=0;
+			do{
+				memcpy(&regAux, info.buffer+(info.z*sizeof(struct t2fs_record)), sizeof(struct t2fs_record));
+				if(regAux.TypeVal == TYPEVAL_REGULAR || regAux.TypeVal == TYPEVAL_DIRETORIO){
+					info.bytesread += sizeof(struct t2fs_record);
+					return regAux;
+				}
+				info.z++;
+			}while(info.z<(SECTOR_SIZE/sizeof(struct t2fs_record)) && info.bytesread<inode.bytesFileSize);
+			if(info.bytesread >=inode.bytesFileSize){
+				regAux.TypeVal = TYPEVAL_INVALIDO;
+				return regAux;
+			}
+		}
+	}
+}
+
 int setInode(struct t2fs_inode inode, DWORD inodeNumber){
 DWORD iSector, iPosition;
 iSector = inodeSector + (inodeNumber/inode_per_sector);
@@ -339,7 +522,7 @@ iPosition = inodeNumber % inode_per_sector;
 
 int absolutePath(char *abspath, char *path){
 	char fullpathname[MAX_FILE_NAME_SIZE +1];
-	char name[100][59], *pathaux, *token, *current;
+	char name[6][59], *pathaux, *token, *current;
 	int cont = 0;
 	pathaux = (char *) malloc(strlen(path) +1);
 	strcpy(pathaux, path);
@@ -375,6 +558,10 @@ int absolutePath(char *abspath, char *path){
 		else{
 			strcpy(name[cont], token); // passa o token pra uma string do nome
 			cont++;
+			if(cont >= 6){
+				printf("ERROR: too many directories in path!\n");
+	    	return 1;
+			}
 		}
 		token = strtok(NULL, "/");
 	}
@@ -407,7 +594,7 @@ int filenameDir(char *filename){
 }
 
 unsigned int blockFirstSector(unsigned int block){
-	return (block * superBlock->blockSize);
+	return (block * superBlock.blockSize);
 }
 
 int delBlocks(DWORD inode, int cPointer){
@@ -472,7 +659,7 @@ int delBlocks(DWORD inode, int cPointer){
 		l = 0;
 		for( i = 0; i < bIndex, i++){/*Each index block*/
 	  	sFirstBlockSector = blockFirstSector(arrayOfBlockIndex[i]);/*First Block of the single index block*/
-	  	for(j = 0; j < iBSector; j++){
+	  	for(j = 0; j < superBlock.blockSize; j++){
 	  		if( read_sector(sFirstBlockSector + j, &delBuff) ){
 	    		printf("Error in delBlocks,failed to read sector %i\n", sFirstBlockSector+j);
 	    		return -1;
@@ -676,7 +863,7 @@ int delBlocks(DWORD inode, int cPointer){
 int isFileOpen(DWORD inode){
   fileHandler temp;
   int i;
-  for(i = 0; i < 10; i++){
+  for(i = 0; i < MAX_NUM_FILES; i++){
     temp = openedFiles[i];
     if( temp.numInode == inode)
       return 1;

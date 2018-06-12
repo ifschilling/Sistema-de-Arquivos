@@ -31,6 +31,9 @@ struct coordinates{
 	struct t2fs_record record;
 };
 
+// SETUP
+int setup();
+
 //GETTERS E SETTERS
 /*-----------------------------------------------------------------------------
 Função: Acha um registro que tenha o mesmo nome do último argumento de path.
@@ -71,6 +74,14 @@ Entra:	dirReg -> Registro do diretorio onde o a busca sera feita
 Saída:	Retorna uma estrutura coordinates, contendo a ultima posicao e o ultimo setor acessado (setor e posicao onde sera criado o novo registro);
 -----------------------------------------------------------------------------*/
 struct coordinates getNewRegCoordinates(struct t2fs_record dirReg);
+
+/*-----------------------------------------------------------------------------
+Função:	Faz uma varredura dos blocos do inode passado, com base em variaveis globais da estrutura info. É usada para implementar a readdir2.
+Entra:	inode-> inode onde a varredura sera feita
+Saída:	Retorna uma estrutura t2fs_record, contendo o registro encontrado.
+				Caso de erro, retorna o registro com TypeVal = TYPEVAL_INVALIDO.
+-----------------------------------------------------------------------------*/
+struct t2fs_record readRegs(struct t2fs_inode inode);
 
 /*-----------------------------------------------------------------------------
 Função:	Procura inode com o índice de inodeNumber
